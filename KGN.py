@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 from typing import List, Dict, Optional, Tuple, Union
 
@@ -186,6 +184,11 @@ class KnowledgeGuidedUNet3D(nn.Module):
         self.use_territory_atlas = use_territory_atlas
         self.auxiliary_encoder_output_channels = auxiliary_encoder_output_channels
 
+        self.collateral_weights = nn.Parameter(torch.ones(collateral_score_dim) / collateral_score_dim)
+        self.collateral_min_vals = torch.tensor([0.0] * collateral_score_dim)
+        self.collateral_max_vals = torch.tensor([10.0] * collateral_score_dim)
+
+
         self.initial_conv = nn.Sequential(
             ConvBnRelu3d(ctp_channels, initial_conv_channels, kernel_size=3, padding=1),
             ConvBnRelu3d(initial_conv_channels, initial_conv_channels, kernel_size=3, padding=1)
@@ -258,7 +261,9 @@ class KnowledgeGuidedUNet3D(nn.Module):
         if collateral_scores.shape[1] != self.collateral_score_dim:
              raise ValueError(f"Expected collateral score dimension {self.collateral_score_dim} but got {collateral_scores.shape[1]}.")
 
-        comprehensive_score = torch.mean(collateral_scores, dim=1, keepdim=True)
+        normalized_scores = self._normalize_collateral_scores(collateral_scores)
+
+        comprehensive_score = self._calculate_comprehensive_score(normalized_scores)
 
         batch_size = comprehensive_score.shape[0]
         broadcasted_score_map = comprehensive_score.view(batch_size, 1, 1, 1, 1).repeat(
@@ -268,10 +273,16 @@ class KnowledgeGuidedUNet3D(nn.Module):
         return broadcasted_score_map
 
     def _normalize_collateral_scores(self, scores: torch.Tensor) -> torch.Tensor:
-        return scores
+        min_vals = self.collateral_min_vals.to(scores.device)
+        max_vals = self.collateral_max_vals.to(scores.device)
+        normalized_scores = (scores - min_vals) / (max_vals - min_vals + 1e-6)
+        normalized_scores = torch.clamp(normalized_scores, 0.0, 1.0)
+        return normalized_scores
 
     def _calculate_comprehensive_score(self, normalized_scores: torch.Tensor) -> torch.Tensor:
-         return torch.mean(normalized_scores, dim=1)
+         weights = self.collateral_weights.to(normalized_scores.device)
+         comprehensive_score = torch.sum(weights * normalized_scores, dim=1, keepdim=True)
+         return comprehensive_score
 
     def forward(self,
                 ctp_maps: torch.Tensor,
@@ -375,83 +386,3 @@ def create_knowledge_guided_unet_3d(model_type: str, n_classes: int, **kwargs) -
     )
 
     return model
-
-if __name__ == "__main__":
-    batch_size = 2
-    ctp_input = torch.randn(batch_size, DEFAULT_CTP_CHANNELS, *DEFAULT_INPUT_SIZE_3D)
-
-    collateral_scores_input = torch.randn(batch_size, DEFAULT_COLLATERAL_SCORE_DIM)
-    probability_atlas_input = torch.randn(batch_size, 1, *DEFAULT_INPUT_SIZE_3D)
-    territory_atlas_input = torch.randn(batch_size, 1, *DEFAULT_INPUT_SIZE_3D)
-
-    print("\nTesting UnifiedNet configuration:")
-    unified_model = create_knowledge_guided_unet_3d(
-        model_type='UnifiedNet',
-        n_classes=2
-    )
-
-    output_unified = unified_model(
-        ctp_maps=ctp_input,
-        collateral_scores=collateral_scores_input,
-        probability_atlas=probability_atlas_input,
-        territory_atlas=territory_atlas_input
-    )
-
-    print(f"Input CTP shape: {ctp_input.shape}")
-    print(f"Output UnifiedNet shape: {output_unified.shape}")
-
-    print("\nTesting BaselineNet configuration:")
-    baseline_model = create_knowledge_guided_unet_3d(
-        model_type='BaselineNet',
-        n_classes=2
-    )
-
-    output_baseline = baseline_model(ctp_maps=ctp_input)
-
-    print(f"Input CTP shape: {ctp_input.shape}")
-    print(f"Output BaselineNet shape: {output_baseline.shape}")
-
-    print("\nTesting CollateralFlowNet configuration:")
-    collateral_model = create_knowledge_guided_unet_3d(
-        model_type='CollateralFlowNet',
-        n_classes=2
-    )
-
-    output_collateral = collateral_model(
-        ctp_maps=ctp_input,
-        collateral_scores=collateral_scores_input
-    )
-
-    print(f"Input CTP shape: {ctp_input.shape}")
-    print(f"Input Collateral Scores shape: {collateral_scores_input.shape}")
-    print(f"Output CollateralFlowNet shape: {output_collateral.shape}")
-
-    print("\nTesting InfarctProbabilityNet configuration:")
-    probability_model = create_knowledge_guided_unet_3d(
-        model_type='InfarctProbabilityNet',
-        n_classes=2
-    )
-
-    output_probability = probability_model(
-        ctp_maps=ctp_input,
-        probability_atlas=probability_atlas_input
-    )
-
-    print(f"Input CTP shape: {ctp_input.shape}")
-    print(f"Input Probability Atlas shape: {probability_atlas_input.shape}")
-    print(f"Output InfarctProbabilityNet shape: {output_probability.shape}")
-
-    print("\nTesting ArterialTerritoryNet configuration:")
-    territory_model = create_knowledge_guided_unet_3d(
-        model_type='ArterialTerritoryNet',
-        n_classes=2
-    )
-
-    output_territory = territory_model(
-        ctp_maps=ctp_input,
-        territory_atlas=territory_atlas_input
-    )
-
-    print(f"Input CTP shape: {ctp_input.shape}")
-    print(f"Input Territory Atlas shape: {territory_atlas_input.shape}")
-    print(f"Output ArterialTerritoryNet shape: {output_territory.shape}")
