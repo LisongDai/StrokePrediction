@@ -89,7 +89,7 @@ def load_atlas(atlas_path, target_shape=(128, 128, 128), affine=None):
             atlas_tensor,
             size=target_shape,
             mode=interpolation_mode,
-            align_corners=False if interpolation_mode == 'trilinear' else None
+            align_corners=False if interpolation_mode == "trilinear" else None,
         )
         
         # Remove batch dimension
@@ -162,9 +162,8 @@ def main():
         n_classes=1  # Binary segmentation
     )
     
-    # Load model weights
+    # Load model weights (map_location for CPU inference when model was trained on GPU)
     checkpoint = torch.load(args.model_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
     model.eval()
     
@@ -205,16 +204,16 @@ def main():
         territory_atlas = load_atlas(args.territory_atlas)
         model_inputs["territory_atlas"] = territory_atlas.unsqueeze(0).to(device)
     
-    # Run inference
-    with torch.no_grad():
+    # Run inference (inference_mode disables autograd for slightly faster inference)
+    with torch.inference_mode():
         output = model(**model_inputs)
-        prediction = torch.sigmoid(output) > args.threshold
+        prediction = (torch.sigmoid(output) > args.threshold).float()
     
     # Save prediction
     save_prediction(prediction, args.output_path, ctp_nii)
     
-    # Additionally save probability map if desired
-    probability_path = args.output_path.replace('.nii.gz', '_probability.nii.gz')
+    # Optionally save probability map (output already in memory)
+    probability_path = args.output_path.replace(".nii.gz", "_probability.nii.gz")
     save_prediction(torch.sigmoid(output), probability_path, ctp_nii)
 
 if __name__ == "__main__":
