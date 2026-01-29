@@ -240,11 +240,12 @@ Collateral dimensions are **artery**, **perfusion**, and **vein** (e.g. ASITN/SI
 If you use this code or the method, please cite:
 
 ```bibtex
-@article{knowledge-guided-infarct,
-  title   = {Predicting Infarct Outcomes Following Extended Time Window Thrombectomy in Large Vessel Occlusion Using Knowledge-Guided Deep Learning},
-  journal = {Journal of NeuroInterventional Surgery},
-  year    = {2025},
-  note    = {Under review}
+@article{dai2025predicting,
+  title={Predicting infarct outcomes after extended time window thrombectomy in large vessel occlusion using knowledge guided deep learning},
+  author={Dai, Lisong and Yuan, Lei and Zhang, Houwang and Sun, Zheng and Jiang, Jingxuan and Li, Zhaohui and Li, Yuehua and Zha, Yunfei},
+  journal={Journal of NeuroInterventional Surgery},
+  year={2025},
+  publisher={British Medical Journal Publishing Group}
 }
 ```
 
