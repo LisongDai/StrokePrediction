@@ -249,24 +249,16 @@ class CombinedLoss(nn.Module):
 
 def calculate_metrics(pred: torch.Tensor, target: torch.Tensor) -> Dict[str, float]:
     """Calculate Dice score and IoU for evaluation."""
-    pred = (torch.sigmoid(pred) > 0.5).float()
-    
-    # Flatten the predictions and targets
-    pred_flat = pred.view(-1)
+    pred_bin = (torch.sigmoid(pred) > 0.5).float()
+    pred_flat = pred_bin.view(-1)
     target_flat = target.view(-1)
-    
-    # Calculate intersection and union
     intersection = (pred_flat * target_flat).sum().item()
-    union = pred_flat.sum().item() + target_flat.sum().item() - intersection
-    
-    # Calculate metrics
-    dice = (2. * intersection) / (pred_flat.sum().item() + target_flat.sum().item() + 1e-8)
+    pred_sum = pred_flat.sum().item()
+    target_sum = target_flat.sum().item()
+    union = pred_sum + target_sum - intersection
+    dice = (2.0 * intersection) / (pred_sum + target_sum + 1e-8)
     iou = intersection / (union + 1e-8)
-    
-    return {
-        "dice": dice,
-        "iou": iou
-    }
+    return {"dice": dice, "iou": iou}
 
 def train_epoch(model: nn.Module, 
                 dataloader: DataLoader, 
@@ -585,9 +577,12 @@ def main():
             print(f"Early stopping after {epoch+1} epochs")
             break
     
-    # Load best model for testing
-    checkpoint = torch.load(f"{args.output_dir}/{args.model_type}_best.pth")
-    model.load_state_dict(checkpoint['model_state_dict'])
+    # Load best model for testing (map_location for CPU/GPU portability)
+    checkpoint = torch.load(
+        f"{args.output_dir}/{args.model_type}_best.pth",
+        map_location=device,
+    )
+    model.load_state_dict(checkpoint["model_state_dict"])
     
     # Test
     test_metrics = test(model, test_loader, device)
